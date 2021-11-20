@@ -51,7 +51,7 @@ void coreImportTest ( void );
 
 // sc param-independent helper functions 
 float xy2theta( const float & _x, const float & _y );
-MatrixXd circshift( MatrixXd &_mat, int _num_shift );
+MatrixXd circshift( MatrixXd &_mat, int _num_shift );   // 对 MxN 矩阵 mat 进行 _num_shift 次水平旋转，用来旋转 SC 和扇键，不能用来旋转环键（列向量）
 std::vector<float> eig2stdvec( MatrixXd _eigmat );
 
 
@@ -60,16 +60,26 @@ class SCManager
 public: 
     SCManager( ) = default; // reserving data space (of std::vector) could be considered. but the descriptor is lightweight so don't care.
 
+    ///@brief 计算给定点云的 Scan Context（二维矩阵）
     Eigen::MatrixXd makeScancontext( pcl::PointCloud<SCPointType> & _scan_down );
+
+    ///@brief 基于 Scan Context 计算环键，即将每个环（对应 SC 的环）中所有 bin 的平均值生成一个向量作为环方向的描述子
     Eigen::MatrixXd makeRingkeyFromScancontext( Eigen::MatrixXd &_desc );
+
+    ///@brief 基于 Scan Context 计算环键，即将每个扇面（对应 SC 的列）中所有 bin 的平均值生成一个向量作为扇方向的描述子
     Eigen::MatrixXd makeSectorkeyFromScancontext( Eigen::MatrixXd &_desc );
 
+    ///@brief 对两个扇键进行快速对齐
     int fastAlignUsingVkey ( MatrixXd & _vkey1, MatrixXd & _vkey2 ); 
+    ///@brief 计算两个 SC 之间的距离
     double distDirectSC ( MatrixXd &_sc1, MatrixXd &_sc2 ); // "d" (eq 5) in the original paper (IROS 18)
     std::pair<double, int> distanceBtnScanContext ( MatrixXd &_sc1, MatrixXd &_sc2 ); // "D" (eq 6) in the original paper (IROS 18)
 
     // User-side API
+    ///@brief 对传入的点云(Lidar 坐标系下)计算 Scan Context 并保存用于后续匹配
     void makeAndSaveScancontextAndKeys( pcl::PointCloud<SCPointType> & _scan_down );
+    ///@brief 使用最新一帧点云的 SC 在历史帧中需要匹配帧
+    /// @return 返回找到的历史匹配帧和对应的水平旋转角估计
     std::pair<int, float> detectLoopClosureID( void ); // int: nearest node index, float: relative yaw  
 
 public:
@@ -97,9 +107,10 @@ public:
 
     // data 
     std::vector<double> polarcontexts_timestamp_; // optional.
-    std::vector<Eigen::MatrixXd> polarcontexts_;
-    std::vector<Eigen::MatrixXd> polarcontext_invkeys_;
-    std::vector<Eigen::MatrixXd> polarcontext_vkeys_;
+    // 完整 SC，环键，扇键的存储数组（索引和 LeGO-LOAM 中的关键帧索引一致）
+    std::vector<Eigen::MatrixXd> polarcontexts_;        // SC，维度 MxN （M 为环数，N 为扇数）
+    std::vector<Eigen::MatrixXd> polarcontext_invkeys_; // 环键，维度 Mx1
+    std::vector<Eigen::MatrixXd> polarcontext_vkeys_;   // 扇键，维度 1xN
 
     KeyMat polarcontext_invkeys_mat_;
     KeyMat polarcontext_invkeys_to_search_;

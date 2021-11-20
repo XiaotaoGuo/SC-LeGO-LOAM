@@ -230,7 +230,7 @@ private:
     float cRoll, sRoll, cPitch, sPitch, cYaw, sYaw, tX, tY, tZ;
     float ctRoll, stRoll, ctPitch, stPitch, ctYaw, stYaw, tInX, tInY, tInZ;
 
-    // // loop detector 
+    // // loop detector -- Scan Context 回环检测模块
     SCManager scManager;
 
 public:
@@ -904,7 +904,7 @@ public:
         }
 
         /* 
-         * 2. Scan context-based global localization 
+         * 2. Scan context-based global localization -- 基于 Scan Context 的全局定位
          */
         SClatestSurfKeyFrameCloud->clear();
         SCnearHistorySurfKeyFrameCloud->clear();
@@ -913,6 +913,8 @@ public:
         // std::lock_guard<std::mutex> lock(mtx);        
         latestFrameIDLoopCloure = cloudKeyPoses3D->points.size() - 1;
         SCclosestHistoryFrameID = -1; // init with -1
+
+        // 使用最新一帧数据在历史帧中找相似帧，返回该相似帧的索引和偏航角差
         auto detectResult = scManager.detectLoopClosureID(); // first: nn index, second: yaw diff 
         SCclosestHistoryFrameID = detectResult.first;
         yawDiffRad = detectResult.second; // not use for v1 (because pcl icp withi initial somthing wrong...)
@@ -925,12 +927,14 @@ public:
         // save latest key frames: query ptcloud (corner points + surface points)
         // NOTE: using "closestHistoryFrameID" to make same root of submap points to get a direct relative between the query point cloud (latestSurfKeyFrameCloud) and the map (nearHistorySurfKeyFrameCloud). by giseop
         // i.e., set the query point cloud within mapside's local coordinate
+        // 以最近历史帧的位姿将当前帧点云（包括角点和平面点）投影至地图坐标系下，这样通过 ICP 得到的相对位姿变换不会将里程计的结果考虑在内，得到是当前帧点云和该地图的直接匹配关系
         *SClatestSurfKeyFrameCloud += *transformPointCloud(cornerCloudKeyFrames[latestFrameIDLoopCloure], &cloudKeyPoses6D->points[SCclosestHistoryFrameID]);         
         *SClatestSurfKeyFrameCloud += *transformPointCloud(surfCloudKeyFrames[latestFrameIDLoopCloure],   &cloudKeyPoses6D->points[SCclosestHistoryFrameID]); 
 
         pcl::PointCloud<PointType>::Ptr SChahaCloud(new pcl::PointCloud<PointType>());
         int cloudSize = SClatestSurfKeyFrameCloud->points.size();
         for (int i = 0; i < cloudSize; ++i){
+            // 将索引不合理的点去掉（理论上应该不会有）
             if ((int)SClatestSurfKeyFrameCloud->points[i].intensity >= 0){
                 SChahaCloud->push_back(SClatestSurfKeyFrameCloud->points[i]);
             }
@@ -938,7 +942,7 @@ public:
         SClatestSurfKeyFrameCloud->clear();
         *SClatestSurfKeyFrameCloud = *SChahaCloud;
 
-	   // save history near key frames: map ptcloud (icp to query ptcloud)
+	   // save history near key frames: map ptcloud (icp to query ptcloud) -- 构建找到的回环历史帧附近的局部地图并下采样
         for (int j = -historyKeyframeSearchNum; j <= historyKeyframeSearchNum; ++j){
             if (SCclosestHistoryFrameID + j < 0 || SCclosestHistoryFrameID + j > latestFrameIDLoopCloure)
                 continue;
@@ -1048,7 +1052,7 @@ public:
         }
 
         /*
-         * 2. SC loop factor (scan context)
+         * 2. SC loop factor (scan context) -- 对 SC 回环检检测找到的两个关联帧进行 ICP 匹配并构建相关因子（和基于半径搜索的回环约束因子构建过程基本一致）
          */
         if( SCclosestHistoryFrameID != -1 ) {
             pcl::IterativeClosestPoint<PointType, PointType> icp;
@@ -1081,7 +1085,7 @@ public:
                 correctionCameraFrame = icp.getFinalTransformation(); // get transformation in camera frame (because points are in camera frame)
                 pcl::getTranslationAndEulerAngles (correctionCameraFrame, x, y, z, roll, pitch, yaw);
                 gtsam::Pose3 poseFrom = Pose3(Rot3::RzRyRx(roll, pitch, yaw), Point3(x, y, z));
-                gtsam::Pose3 poseTo = Pose3(Rot3::RzRyRx(0.0, 0.0, 0.0), Point3(0.0, 0.0, 0.0));
+                gtsam::Pose3 poseTo = Pose3(Rot3::RzRyRx(0.0, 0.0, 0.0), Point3(0.0, 0.0, 0.0));    // 用于投影的当前帧点云使用的是匹配帧的位姿，因此匹配目标是单位转换矩阵
                 
                 std::lock_guard<std::mutex> lock(mtx);
                 // gtSAMgraph.add(BetweenFactor<Pose3>(latestFrameIDLoopCloure, closestHistoryFrameID, poseFrom.between(poseTo), constraintNoise)); // original 
@@ -1619,7 +1623,7 @@ public:
         pcl::copyPointCloud(*laserCloudOutlierLastDS, *thisOutlierKeyFrame);
 
         /* 
-            Scan Context loop detector 
+            Scan Context loop detector -- SC 回环检测两种策略，使用下采样后的原始点云构建 SC，或者只使用平面点
             - ver 1: using surface feature as an input point cloud for scan context (2020.04.01: checked it works.)
             - ver 2: using downsampled original point cloud (/full_cloud_projected + downsampling)
             */

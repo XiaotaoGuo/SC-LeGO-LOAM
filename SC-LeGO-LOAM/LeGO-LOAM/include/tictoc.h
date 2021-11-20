@@ -9,6 +9,10 @@
 #include <cstdlib>
 #include <chrono>
 
+///
+///@brief 一个简单的计时器
+///
+///
 class TicToc
 {
 public:

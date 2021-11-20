@@ -1,3 +1,7 @@
+## SC-LeGO-LOAM-w-Comment
+
+对 SC-LeGO-LOAM 中使用 SC 的部分进行了简单的注释，对于使用 SC 的流程和注意事项，可以参考：[以 SC-LeGO-LOAM 为例使用 Scan Context](https://xiaotaoguo.com/p/sc-lego-loam-note/)
+
 # SC-LeGO-LOAM
 ## NEWS (Nov, 2020)
 - A Scan Context integration for LIO-SAM, named [SC-LIO-SAM (link)](https://github.com/gisbi-kim/SC-LIO-SAM), is also released. 
